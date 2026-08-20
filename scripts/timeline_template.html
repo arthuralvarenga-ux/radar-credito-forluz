@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Radar de Estresse de Crédito</title>
+<style>
+  :root {
+    --bg: #f4f6fb;
+    --card: #ffffff;
+    --text: #1b2333;
+    --muted: #5b6579;
+    --blue: #3568d4;
+    --red: #d1394a;
+    --orange: #e2632f;
+    --border: #e2e6f0;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+  }
+  header {
+    padding: 28px 32px 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--card);
+  }
+  header h1 { margin: 0 0 4px; font-size: 22px; }
+  header p { margin: 0; color: var(--muted); font-size: 13px; }
+  .container { max-width: 900px; margin: 0 auto; padding: 24px 16px 60px; }
+  .filters { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 24px; }
+  .filters input, .filters select {
+    padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px;
+    font-size: 13px; background: var(--card); color: var(--text);
+  }
+  .filters input { flex: 1; min-width: 200px; }
+  .month-group { margin-bottom: 28px; }
+  .month-label {
+    font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--muted); margin-bottom: 10px; font-weight: 600;
+  }
+  .card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+    padding: 14px 16px; margin-bottom: 10px; border-left: 4px solid var(--blue);
+  }
+  .card.sev-alta { border-left-color: var(--red); }
+  .card.sev-media { border-left-color: var(--orange); }
+  .card.sev-baixa { border-left-color: var(--blue); }
+  .card-top { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+  .card-title { font-size: 14.5px; font-weight: 600; margin: 0; }
+  .card-title a { color: var(--text); text-decoration: none; }
+  .card-title a:hover { text-decoration: underline; }
+  .card-date { font-size: 12px; color: var(--muted); white-space: nowrap; }
+  .card-meta { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0 6px; }
+  .tag {
+    font-size: 11px; padding: 2px 8px; border-radius: 999px; font-weight: 600;
+    background: #eef1fa; color: var(--blue);
+  }
+  .tag.sev-alta { background: #fbe9eb; color: var(--red); }
+  .tag.sev-media { background: #fdece2; color: var(--orange); }
+  .card-resumo { font-size: 13px; color: var(--muted); margin: 0; }
+  .card-fonte { font-size: 11.5px; color: var(--muted); margin-top: 6px; }
+  .empty { text-align: center; color: var(--muted); padding: 60px 0; font-size: 14px; }
+  .count { font-size: 12px; color: var(--muted); margin-bottom: 14px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Radar de Estresse de Crédito Privado</h1>
+  <p>Monitoramento semanal automatizado &middot; Atualizado em __ATUALIZADO_EM__</p>
+</header>
+<div class="container">
+  <div class="filters">
+    <input id="search" type="text" placeholder="Buscar por emissor, título, tipo de evento...">
+    <select id="severidade">
+      <option value="">Todas severidades</option>
+      <option value="alta">Alta</option>
+      <option value="média">Média</option>
+      <option value="baixa">Baixa</option>
+    </select>
+  </div>
+  <div id="count" class="count"></div>
+  <div id="timeline"></div>
+</div>
+<script>
+const EVENTOS = __EVENTOS_JSON__;
+
+function monthLabel(iso) {
+  const d = new Date(iso);
+  const label = d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+function sevClass(sev) {
+  if (!sev) return 'sev-baixa';
+  const s = sev.toLowerCase();
+  if (s.includes('alta')) return 'sev-alta';
+  if (s.includes('média') || s.includes('media')) return 'sev-media';
+  return 'sev-baixa';
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str || '';
+  return div.innerHTML;
+}
+
+function render() {
+  const q = document.getElementById('search').value.trim().toLowerCase();
+  const sevFilter = document.getElementById('severidade').value;
+  const container = document.getElementById('timeline');
+  const countEl = document.getElementById('count');
+  container.innerHTML = '';
+
+  const filtered = EVENTOS.filter(e => {
+    if (sevFilter && (!e.severidade || !e.severidade.toLowerCase().includes(sevFilter))) return false;
+    if (!q) return true;
+    const hay = [e.titulo, e.emissor, e.tipo_evento, e.resumo].filter(Boolean).join(' ').toLowerCase();
+    return hay.includes(q);
+  });
+
+  countEl.textContent = `${filtered.length} evento(s) de ${EVENTOS.length} no total`;
+
+  if (filtered.length === 0) {
+    container.innerHTML = '<div class="empty">Nenhum evento encontrado ainda. A timeline se popula automaticamente a cada execução semanal.</div>';
+    return;
+  }
+
+  let currentMonth = null;
+  let monthDiv = null;
+  for (const e of filtered) {
+    const m = monthLabel(e.data_publicacao);
+    if (m !== currentMonth) {
+      currentMonth = m;
+      monthDiv = document.createElement('div');
+      monthDiv.className = 'month-group';
+      const label = document.createElement('div');
+      label.className = 'month-label';
+      label.textContent = m;
+      monthDiv.appendChild(label);
+      container.appendChild(monthDiv);
+    }
+    const card = document.createElement('div');
+    card.className = 'card ' + sevClass(e.severidade);
+    const dateStr = new Date(e.data_publicacao).toLocaleDateString('pt-BR');
+    card.innerHTML = `
+      <div class="card-top">
+        <p class="card-title"><a href="${e.link}" target="_blank" rel="noopener">${escapeHtml(e.titulo)}</a></p>
+        <span class="card-date">${dateStr}</span>
+      </div>
+      <div class="card-meta">
+        ${e.emissor ? `<span class="tag">${escapeHtml(e.emissor)}</span>` : ''}
+        ${e.tipo_evento ? `<span class="tag">${escapeHtml(e.tipo_evento)}</span>` : ''}
+        ${e.severidade ? `<span class="tag ${sevClass(e.severidade)}">severidade: ${escapeHtml(e.severidade)}</span>` : ''}
+      </div>
+      ${e.resumo ? `<p class="card-resumo">${escapeHtml(e.resumo)}</p>` : ''}
+      <div class="card-fonte">${escapeHtml(e.fonte || '')}</div>
+    `;
+    monthDiv.appendChild(card);
+  }
+}
+
+document.getElementById('search').addEventListener('input', render);
+document.getElementById('severidade').addEventListener('change', render);
+render();
+</script>
+</body>
+</html>
